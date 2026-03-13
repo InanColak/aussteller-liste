@@ -1,0 +1,10 @@
+.git
+.env
+__pycache__
+*.pyc
+.ruff_cache
+.pytest_cache
+*.egg-info
+output/*.xlsx
+output/*.csv
+.claude

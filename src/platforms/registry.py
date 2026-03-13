@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from src.platforms.base import BaseScraper
+from src.platforms.messe_berlin import MesseBerlinScraper
 from src.platforms.messe_duesseldorf import MesseDuesseldorfScraper
+from src.platforms.messe_frankfurt import MesseFrankfurtScraper
+from src.platforms.ungerboeck import UngerboeckScraper
 
 SCRAPERS: list[type[BaseScraper]] = [
     MesseDuesseldorfScraper,
+    MesseBerlinScraper,
+    MesseFrankfurtScraper,
+    UngerboeckScraper,
 ]
 
 

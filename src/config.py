@@ -21,3 +21,7 @@ MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
 # Scraping defaults
 DEFAULT_LIMIT: int = 0  # 0 = no limit
 DEFAULT_FORMAT: str = "excel"
+
+# Concurrency & cost limits
+MAX_CONCURRENT_JOBS: int = int(os.getenv("MAX_CONCURRENT_JOBS", "3"))
+DAILY_SCRAPE_LIMIT: int = int(os.getenv("DAILY_SCRAPE_LIMIT", "50"))

@@ -1,0 +1,140 @@
+{
+  "profile_version": 1,
+  "platform_id": "biomessen",
+  "domain_patterns": [
+    "biomessen.info"
+  ],
+  "source_type": "html",
+  "requires_javascript": false,
+  "headers": {},
+  "listing": {
+    "strategy": "single_page",
+    "url_template": "https://biomessen.info/biowest/",
+    "meta_url": null,
+    "meta_letters_path": null,
+    "pagination": {
+      "type": "page_number",
+      "start": 1,
+      "page_size": 50,
+      "max_pages": 1,
+      "next_url_selector": null,
+      "stop_when_empty": true
+    },
+    "item_container_selector": "li.menu-item",
+    "item_id_path": "$.id",
+    "item_filter": {
+      "field": "categories",
+      "equals": "exhibitors"
+    }
+  },
+  "detail": {
+    "url_template": "https://biomessen.info/biowest/exhibitor/{id}",
+    "source_type": "html",
+    "container_selector": ".exhibitor-details"
+  },
+  "field_map": {
+    "company_name": {
+      "source": "listing",
+      "css": ".exhibitor-name",
+      "attribute": "text",
+      "json_path": "$.name",
+      "regex": null,
+      "transform": "strip_html",
+      "is_array": false
+    },
+    "website": {
+      "source": "listing",
+      "css": ".exhibitor-website",
+      "attribute": "href",
+      "json_path": "$.website",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "email": {
+      "source": "detail",
+      "css": ".exhibitor-email",
+      "attribute": "text",
+      "json_path": "$.contact.email",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "phone": {
+      "source": "detail",
+      "css": ".exhibitor-phone",
+      "attribute": "text",
+      "json_path": "$.contact.phone",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "address": {
+      "source": "detail",
+      "css": ".exhibitor-address",
+      "attribute": "text",
+      "json_path": "$.address.street",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "country": {
+      "source": "detail",
+      "css": ".exhibitor-country",
+      "attribute": "text",
+      "json_path": "$.address.country",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "city": {
+      "source": "detail",
+      "css": ".exhibitor-city",
+      "attribute": "text",
+      "json_path": "$.address.city",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "hall": {
+      "source": "detail",
+      "css": ".exhibitor-hall",
+      "attribute": "text",
+      "json_path": "$.location.hall",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "stand": {
+      "source": "detail",
+      "css": ".exhibitor-stand",
+      "attribute": "text",
+      "json_path": "$.location.stand",
+      "regex": null,
+      "transform": null,
+      "is_array": false
+    },
+    "categories": {
+      "source": "detail",
+      "css": ".exhibitor-categories",
+      "attribute": "text",
+      "json_path": "$.categories",
+      "regex": null,
+      "transform": "truncate_500",
+      "is_array": true
+    },
+    "description": {
+      "source": "detail",
+      "css": ".exhibitor-description",
+      "attribute": "text",
+      "json_path": "$.description",
+      "regex": null,
+      "transform": "strip_html",
+      "is_array": false
+    }
+  },
+  "learned_at": "2026-03-08T16:43:10.857000",
+  "last_used_at": null,
+  "confidence": 0.85,
+  "notes": "The exhibitor list is available on a single page without pagination."
+}

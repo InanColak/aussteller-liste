@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
-import re
 
 from openai import AsyncOpenAI
+from playwright.async_api import async_playwright
 
 from src.config import OPENAI_API_KEY, OPENAI_MODEL
+from src.discovery.page_fetcher import _dismiss_cookie_banner
 from src.models import Exhibitor
 
 SYSTEM_PROMPT = """\
-You are an expert at extracting exhibitor data from trade fair HTML pages.
-Given HTML content, extract all exhibitor/company entries you can find.
+You are an expert at extracting exhibitor data from trade fair web pages.
+Given the visible text content of a page, extract all exhibitor/company entries you can find.
 Return a JSON array of objects with these fields (use null if not found):
 - company_name (required)
 - website
@@ -35,22 +36,60 @@ Return format:
 Only return valid JSON, nothing else.
 """
 
-MAX_HTML_CHARS = 60_000
+MAX_TEXT_CHARS = 30_000
 
 
-def _clean_html(html: str) -> str:
-    """Strip scripts, styles, and excess whitespace to reduce token count."""
-    html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
-    html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL)
-    html = re.sub(r"<!--.*?-->", "", html, flags=re.DOTALL)
-    html = re.sub(r"\s+", " ", html)
-    return html[:MAX_HTML_CHARS]
+async def _fetch_page_text(url: str) -> tuple[str, list[dict]]:
+    """Load page with Playwright, dismiss cookie banner, return visible text and links."""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        )
+        try:
+            await page.goto(url, wait_until="networkidle", timeout=60_000)
+        except Exception:
+            # Fallback: try without waiting for networkidle
+            await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+        await page.wait_for_timeout(2000)
+        await _dismiss_cookie_banner(page)
+        await page.wait_for_timeout(2000)
+
+        # Scroll to load lazy content
+        for _ in range(5):
+            await page.evaluate("window.scrollBy(0, 2000)")
+            await page.wait_for_timeout(500)
+
+        # Get visible text (no HTML noise)
+        text = await page.inner_text("body")
+
+        # Get links for pagination detection
+        links = await page.evaluate("""
+            () => Array.from(document.querySelectorAll('a[href]')).map(a => ({
+                href: a.href,
+                text: a.innerText.trim().substring(0, 100)
+            })).filter(l => l.text.length > 0 && l.text.length < 100)
+        """)
+
+        await browser.close()
+
+    # Clean up text
+    text = text.replace("\u00AD", "")  # Remove soft hyphens
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    clean_text = "\n".join(lines)
+
+    if len(clean_text) > MAX_TEXT_CHARS:
+        clean_text = clean_text[:MAX_TEXT_CHARS]
+
+    return clean_text, links
 
 
 async def extract_exhibitors(
     html: str, page_url: str
 ) -> tuple[list[Exhibitor], str | None]:
-    """Use GPT-4o-mini to extract exhibitor data from HTML.
+    """Extract exhibitor data from a trade fair page.
+
+    Uses Playwright to get visible text, then GPT to extract structured data.
 
     Returns:
         Tuple of (exhibitors, next_page_url or None)
@@ -61,20 +100,29 @@ async def extract_exhibitors(
             "Set it in your .env file."
         )
 
-    cleaned = _clean_html(html)
+    # Fetch visible text instead of raw HTML
+    page_text, page_links = await _fetch_page_text(page_url)
+
+    # Add pagination links as context
+    pagination_hint = ""
+    for link in page_links:
+        text_lower = link["text"].lower()
+        if any(kw in text_lower for kw in ["next", "nächste", "weiter", ">>", "›"]):
+            pagination_hint += f"\nPossible next page: {link['text']} -> {link['href']}"
+
+    user_content = f"Page URL: {page_url}\n\nVisible page content:\n{page_text}"
+    if pagination_hint:
+        user_content += f"\n\nPagination links found:{pagination_hint}"
 
     client = AsyncOpenAI(api_key=OPENAI_API_KEY)
     response = await client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"Page URL: {page_url}\n\nHTML content:\n{cleaned}",
-            },
+            {"role": "user", "content": user_content},
         ],
         temperature=0,
-        max_tokens=4000,
+        max_tokens=16000,
     )
 
     content = response.choices[0].message.content or "{}"
@@ -96,7 +144,6 @@ async def extract_exhibitors(
         try:
             exhibitors.append(Exhibitor(**item))
         except Exception:
-            # Skip malformed entries
             continue
 
     next_url = data.get("next_page_url")
