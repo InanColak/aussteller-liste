@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime, date
 from enum import Enum
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from src.config import OUTPUT_DIR, MAX_CONCURRENT_JOBS, DAILY_SCRAPE_LIMIT
+from src.config import (
+    OUTPUT_DIR,
+    LOG_DIR,
+    MAX_CONCURRENT_JOBS,
+    DAILY_SCRAPE_LIMIT,
+    API_KEY,
+    ALLOWED_ORIGINS,
+)
 from src.exporters import export_csv, export_excel
 from src.orchestrator import scrape_url
 
@@ -21,7 +30,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler("scraper.log", encoding="utf-8"),
+        logging.FileHandler(LOG_DIR / "scraper.log", encoding="utf-8"),
     ],
 )
 logger = logging.getLogger("aussteller-api")
@@ -29,12 +38,35 @@ logger = logging.getLogger("aussteller-api")
 # --- App ---
 
 SCRAPE_TIMEOUT = 600  # 10 minutes max per scrape
+_start_time = time.time()
 
 app = FastAPI(
     title="Aussteller Scraper API",
     description="Trade fair exhibitor list scraper API",
-    version="0.1.0",
+    version="0.2.0",
 )
+
+# --- CORS Middleware ---
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --- Auth ---
+
+
+async def verify_api_key(request: Request) -> None:
+    """Dependency that checks X-API-Key header. Disabled when API_KEY is empty."""
+    if not API_KEY:
+        return
+    key = request.headers.get("X-API-Key", "")
+    if key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 # --- Models ---
@@ -60,9 +92,11 @@ class JobInfo(BaseModel):
     completed_at: datetime | None = None
     url: str
     format: str
+    limit: int = 0
     total_exhibitors: int = 0
     error: str | None = None
     file_name: str | None = None
+    progress: str | None = None
 
 
 # --- In-memory job store ---
@@ -102,11 +136,12 @@ async def _run_scrape_job(job_id: str) -> None:
 
     async with _semaphore:
         job.status = JobStatus.running
-        logger.info("Job %s started — URL: %s", job_id, job.url)
+        job.progress = "Scraping started"
+        logger.info("Job %s started — URL: %s (limit: %d)", job_id, job.url, job.limit)
 
         try:
             result = await asyncio.wait_for(
-                scrape_url(job.url, limit=job.total_exhibitors or 0),
+                scrape_url(job.url, limit=job.limit),
                 timeout=SCRAPE_TIMEOUT,
             )
 
@@ -114,9 +149,11 @@ async def _run_scrape_job(job_id: str) -> None:
                 job.status = JobStatus.failed
                 job.completed_at = datetime.now()
                 job.error = "No exhibitors found on this URL"
+                job.progress = "Failed: no exhibitors found"
                 logger.warning("Job %s — no exhibitors found: %s", job_id, job.url)
                 return
 
+            job.progress = "Exporting results"
             if job.format == "csv":
                 path = export_csv(result)
             else:
@@ -126,18 +163,21 @@ async def _run_scrape_job(job_id: str) -> None:
             job.completed_at = datetime.now()
             job.total_exhibitors = result.total_exhibitors
             job.file_name = path.name
+            job.progress = "Completed"
             logger.info("Job %s completed — %d exhibitors → %s", job_id, result.total_exhibitors, path.name)
 
         except asyncio.TimeoutError:
             job.status = JobStatus.failed
             job.completed_at = datetime.now()
             job.error = f"Scrape timed out after {SCRAPE_TIMEOUT} seconds"
+            job.progress = "Failed: timeout"
             logger.error("Job %s timed out after %ds — URL: %s", job_id, SCRAPE_TIMEOUT, job.url)
 
         except Exception as e:
             job.status = JobStatus.failed
             job.completed_at = datetime.now()
-            job.error = str(e)
+            job.error = f"{type(e).__name__}: {e}"
+            job.progress = f"Failed: {type(e).__name__}"
             logger.error("Job %s failed — %s: %s", job_id, type(e).__name__, e)
 
 
@@ -147,8 +187,11 @@ async def _run_scrape_job(job_id: str) -> None:
 @app.get("/health")
 async def health() -> dict:
     today = date.today().isoformat()
+    uptime_seconds = int(time.time() - _start_time)
     return {
         "status": "ok",
+        "version": app.version,
+        "uptime_seconds": uptime_seconds,
         "running_jobs": _get_running_job_count(),
         "daily_scrapes": _daily_count.get(today, 0),
         "daily_limit": DAILY_SCRAPE_LIMIT,
@@ -156,7 +199,7 @@ async def health() -> dict:
     }
 
 
-@app.post("/scrape", response_model=JobInfo)
+@app.post("/scrape", response_model=JobInfo, dependencies=[Depends(verify_api_key)])
 async def start_scrape(request: ScrapeRequest) -> JobInfo:
     # Check daily limit
     if not _check_daily_limit():
@@ -175,23 +218,24 @@ async def start_scrape(request: ScrapeRequest) -> JobInfo:
         created_at=datetime.now(),
         url=request.url,
         format=request.format,
+        limit=request.limit,
     )
     jobs[job_id] = job
-    logger.info("Job %s queued — URL: %s, format: %s", job_id, request.url, request.format)
+    logger.info("Job %s queued — URL: %s, format: %s, limit: %d", job_id, request.url, request.format, request.limit)
 
     asyncio.create_task(_run_scrape_job(job_id))
 
     return job
 
 
-@app.get("/scrape/{job_id}/status", response_model=JobInfo)
+@app.get("/scrape/{job_id}/status", response_model=JobInfo, dependencies=[Depends(verify_api_key)])
 async def get_status(job_id: str) -> JobInfo:
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     return jobs[job_id]
 
 
-@app.get("/scrape/{job_id}/download")
+@app.get("/scrape/{job_id}/download", dependencies=[Depends(verify_api_key)])
 async def download_result(job_id: str) -> FileResponse:
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")

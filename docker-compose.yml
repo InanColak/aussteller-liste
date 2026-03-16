@@ -7,6 +7,13 @@ services:
       - .env
     volumes:
       - ./output:/app/output
+      - ./logs:/app/logs
     restart: unless-stopped
     mem_limit: 2g
     cpus: 1.5
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

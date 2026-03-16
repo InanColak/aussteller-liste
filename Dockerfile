@@ -19,8 +19,8 @@ RUN pip install --no-cache-dir . && \
 COPY src/ src/
 COPY .env* ./
 
-# Output directory
-RUN mkdir -p output
+# Output and logs directories
+RUN mkdir -p output logs
 
 # Non-root user for security
 RUN useradd -m scraper

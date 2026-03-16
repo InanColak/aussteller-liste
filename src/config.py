@@ -11,6 +11,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
+LOG_DIR = PROJECT_ROOT / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
@@ -25,3 +28,13 @@ DEFAULT_FORMAT: str = "excel"
 # Concurrency & cost limits
 MAX_CONCURRENT_JOBS: int = int(os.getenv("MAX_CONCURRENT_JOBS", "3"))
 DAILY_SCRAPE_LIMIT: int = int(os.getenv("DAILY_SCRAPE_LIMIT", "50"))
+
+# API Authentication
+API_KEY: str = os.getenv("API_KEY", "")
+
+# CORS
+ALLOWED_ORIGINS: list[str] = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "*").split(",")
+    if o.strip()
+]
