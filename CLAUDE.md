@@ -35,6 +35,7 @@ Requires a `.env` file with:
 - `OPENAI_API_KEY` — required for AI-powered discovery (link finding, data extraction, site analysis)
 - `OPENAI_MODEL` — defaults to `gpt-4o-mini`
 - `REQUEST_DELAY` — delay between API requests (default 0.5s)
+- `DATABASE_URL` — PostgreSQL connection string (optional, e.g. `postgresql://user:pass@host:5432/dbname`). If not set, DB storage is skipped.
 
 ## Architecture
 
@@ -80,6 +81,16 @@ Allows the system to "remember" how to scrape a site without AI next time:
 ### Export (src/exporters.py)
 
 Exports to `output/` directory as timestamped `.xlsx` or `.csv` files (UTF-8 with BOM for CSV).
+
+### Database (src/database.py)
+
+Optional PostgreSQL storage for scraped companies. Enabled when `DATABASE_URL` is set.
+
+- **`companies` table** — all Exhibitor fields + `first_seen_at`, `last_seen_at`. Unique constraint on `(company_name, website)`.
+- **`company_fairs` table** — tracks which fairs a company participated in (`company_id`, `fair_name`, `fair_url`, `seen_at`).
+- **Upsert logic** — same company (by name+website) gets updated with `COALESCE` (new non-null values overwrite old ones), and a new fair participation record is added.
+- Uses `asyncpg` for async PostgreSQL access with a connection pool.
+- Integrated in both CLI (`cli.py`) and API (`api.py`) — runs after export, failure does not block the export.
 
 ## Key Patterns
 
