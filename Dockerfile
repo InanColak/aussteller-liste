@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -e . && \
     playwright install chromium --with-deps
 
 # Output and logs directories
-RUN mkdir -p output logs
+RUN mkdir -p output output/cache logs
 
 # Non-root user for security
 RUN useradd -m scraper
