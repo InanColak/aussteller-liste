@@ -181,7 +181,7 @@ class MesseFrankfurtScraper(BaseScraper):
         halls = []
         stands = []
         exhibition = ex.get("exhibition", {})
-        for hall_info in exhibition.get("exhibitionHall", []):
+        for hall_info in (exhibition.get("exhibitionHall") or []):
             hall_name = hall_info.get("name", "")
             if hall_name:
                 halls.append(hall_name)

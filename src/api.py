@@ -19,6 +19,7 @@ from src.config import (
     DAILY_SCRAPE_LIMIT,
     API_KEY,
     ALLOWED_ORIGINS,
+    DATABASE_URL,
 )
 from src.exporters import export_csv, export_excel
 from src.orchestrator import scrape_url
@@ -159,6 +160,17 @@ async def _run_scrape_job(job_id: str) -> None:
             else:
                 path = export_excel(result)
 
+            # Save to database if configured
+            if DATABASE_URL:
+                try:
+                    from src.database import save_to_db
+
+                    job.progress = "Saving to database"
+                    db_count = await save_to_db(result)
+                    logger.info("Job %s — saved %d companies to database", job_id, db_count)
+                except Exception as e:
+                    logger.warning("Job %s — database save failed: %s", job_id, e)
+
             job.status = JobStatus.completed
             job.completed_at = datetime.now()
             job.total_exhibitors = result.total_exhibitors
@@ -179,6 +191,29 @@ async def _run_scrape_job(job_id: str) -> None:
             job.error = f"{type(e).__name__}: {e}"
             job.progress = f"Failed: {type(e).__name__}"
             logger.error("Job %s failed — %s: %s", job_id, type(e).__name__, e)
+
+
+# --- Lifecycle ---
+
+
+@app.on_event("startup")
+async def startup_event() -> None:
+    if DATABASE_URL:
+        from src.database import init_db
+
+        try:
+            await init_db()
+            logger.info("Database connection established.")
+        except Exception as e:
+            logger.warning("Database init failed (will retry on save): %s", e)
+
+
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    if DATABASE_URL:
+        from src.database import close_db
+
+        await close_db()
 
 
 # --- Endpoints ---

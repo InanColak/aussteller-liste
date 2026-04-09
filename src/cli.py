@@ -5,6 +5,7 @@ from pathlib import Path
 
 import typer
 
+from src.config import DATABASE_URL
 from src.exporters import export_csv, export_excel, list_caches, load_cache, save_cache
 from src.orchestrator import scrape_url
 from src.platforms.registry import list_platforms
@@ -54,6 +55,22 @@ def scrape(
     typer.echo(f"Data cached: {cache_path}")
 
     _export_result(result, format)
+
+    # Save to database if configured
+    if DATABASE_URL:
+        try:
+            from src.database import init_db, save_to_db, close_db
+
+            async def _db_save():
+                await init_db()
+                count = await save_to_db(result)
+                await close_db()
+                return count
+
+            saved = asyncio.run(_db_save())
+            typer.echo(f"Saved {saved} companies to database.")
+        except Exception as e:
+            typer.echo(f"Database save failed (export was successful): {e}")
 
 
 @app.command()

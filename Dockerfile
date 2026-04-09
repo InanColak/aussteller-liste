@@ -10,14 +10,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install dependencies first (cache layer)
+# Copy source code and config
 COPY pyproject.toml .
-RUN pip install --no-cache-dir . && \
-    playwright install chromium --with-deps
-
-# Copy source code
 COPY src/ src/
 COPY .env* ./
+
+# Install package and Playwright browser
+RUN pip install --no-cache-dir -e . && \
+    playwright install chromium --with-deps
 
 # Output and logs directories
 RUN mkdir -p output logs

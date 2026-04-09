@@ -32,6 +32,9 @@ DAILY_SCRAPE_LIMIT: int = int(os.getenv("DAILY_SCRAPE_LIMIT", "50"))
 # API Authentication
 API_KEY: str = os.getenv("API_KEY", "")
 
+# Database
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+
 # CORS
 ALLOWED_ORIGINS: list[str] = [
     o.strip()
