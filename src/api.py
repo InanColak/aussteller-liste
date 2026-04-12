@@ -263,6 +263,75 @@ async def start_scrape(request: ScrapeRequest) -> JobInfo:
     return job
 
 
+class SyncScrapeRequest(BaseModel):
+    url: str = Field(..., description="Trade fair URL to scrape")
+    format: str = Field("excel", pattern="^(excel|csv)$", description="Output format: excel or csv")
+    limit: int = Field(0, ge=0, description="Max exhibitors (0 = all)")
+
+
+class SyncScrapeResponse(BaseModel):
+    status: str
+    url: str
+    total_exhibitors: int = 0
+    file_name: str | None = None
+    fair_name: str | None = None
+    exhibitors: list[dict] = Field(default_factory=list)
+    error: str | None = None
+
+
+@app.post("/scrape/sync", response_model=SyncScrapeResponse, dependencies=[Depends(verify_api_key)])
+async def sync_scrape(request: SyncScrapeRequest) -> SyncScrapeResponse:
+    """Synchronous scrape — waits for completion and returns results directly."""
+    if not _check_daily_limit():
+        raise HTTPException(
+            status_code=429,
+            detail=f"Daily scrape limit reached ({DAILY_SCRAPE_LIMIT}). Try again tomorrow.",
+        )
+
+    _increment_daily_count()
+    logger.info("Sync scrape started — URL: %s, format: %s, limit: %d", request.url, request.format, request.limit)
+
+    try:
+        result = await asyncio.wait_for(
+            scrape_url(request.url, limit=request.limit),
+            timeout=SCRAPE_TIMEOUT,
+        )
+
+        if result.total_exhibitors == 0:
+            return SyncScrapeResponse(status="failed", url=request.url, error="No exhibitors found on this URL")
+
+        if request.format == "csv":
+            path = export_csv(result)
+        else:
+            path = export_excel(result)
+
+        # Save to database if configured
+        if DATABASE_URL:
+            try:
+                from src.database import save_to_db
+                await save_to_db(result)
+            except Exception as e:
+                logger.warning("Sync scrape — database save failed: %s", e)
+
+        logger.info("Sync scrape completed — %d exhibitors → %s", result.total_exhibitors, path.name)
+
+        return SyncScrapeResponse(
+            status="completed",
+            url=request.url,
+            total_exhibitors=result.total_exhibitors,
+            file_name=path.name,
+            fair_name=result.fair_name,
+            exhibitors=[ex.model_dump(exclude_none=True) for ex in result.exhibitors],
+        )
+
+    except asyncio.TimeoutError:
+        return SyncScrapeResponse(status="failed", url=request.url, error=f"Scrape timed out after {SCRAPE_TIMEOUT} seconds")
+
+    except Exception as e:
+        logger.error("Sync scrape failed — %s: %s", type(e).__name__, e)
+        return SyncScrapeResponse(status="failed", url=request.url, error=f"{type(e).__name__}: {e}")
+
+
 @app.get("/scrape/{job_id}/status", response_model=JobInfo, dependencies=[Depends(verify_api_key)])
 async def get_status(job_id: str) -> JobInfo:
     if job_id not in jobs:

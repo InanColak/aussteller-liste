@@ -1,0 +1,3 @@
+ausstellerliste.duckdns.org {
+    reverse_proxy scraper:8000
+}

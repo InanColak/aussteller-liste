@@ -1,0 +1,175 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Aussteller Scraper",
+    "description": "Trade fair exhibitor list scraper. Scrapes exhibitor data from trade fair websites and exports to Excel/CSV. Use startScrape to begin a job, then poll getScrapeStatus until status is completed or failed.",
+    "version": "0.3.0"
+  },
+  "servers": [
+    {
+      "url": "https://ausstellerliste.duckdns.org",
+      "description": "Hetzner server with Caddy SSL"
+    }
+  ],
+  "paths": {
+    "/scrape": {
+      "post": {
+        "operationId": "startScrape",
+        "summary": "Start a scrape job",
+        "description": "Starts a scrape job for a trade fair exhibitor list. Returns a job_id. Use getScrapeStatus with this job_id to check when the job is completed.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "The trade fair website URL to scrape exhibitors from"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": ["excel", "csv"],
+                    "default": "excel",
+                    "description": "Output file format"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Maximum number of exhibitors to scrape. 0 means all."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scrape job started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing API key"
+          },
+          "429": {
+            "description": "Daily scrape limit reached"
+          }
+        }
+      }
+    },
+    "/scrape/{job_id}/status": {
+      "get": {
+        "operationId": "getScrapeStatus",
+        "summary": "Get scrape job status",
+        "description": "Returns the current status of a scrape job. Poll this endpoint until status is 'completed' or 'failed'. When completed, total_exhibitors shows how many were found and file_name contains the output file.",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The job_id returned from startScrape"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JobInfo": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "description": "Unique identifier for the scrape job"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "failed"],
+            "description": "Current status: queued, running, completed, or failed"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the job was created"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Timestamp when the job finished"
+          },
+          "url": {
+            "type": "string",
+            "description": "The URL being scraped"
+          },
+          "format": {
+            "type": "string",
+            "description": "Output format (excel or csv)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum exhibitors requested"
+          },
+          "total_exhibitors": {
+            "type": "integer",
+            "description": "Number of exhibitors found (available when completed)"
+          },
+          "error": {
+            "type": "string",
+            "nullable": true,
+            "description": "Error message if the job failed"
+          },
+          "file_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name of the output file (available when completed)"
+          },
+          "progress": {
+            "type": "string",
+            "nullable": true,
+            "description": "Current progress description"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API key for authentication"
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ]
+}
