@@ -191,7 +191,7 @@ class MesseFrankfurtScraper(BaseScraper):
                     stands.append(stand_name)
 
         # Website
-        website = ex.get("url", "") or ""
+        website = ex.get("homepage", "") or ex.get("url", "") or ""
         if not website:
             href = exhibition.get("href", "")
             if href and "messefrankfurt" not in href:

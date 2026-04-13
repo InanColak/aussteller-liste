@@ -65,5 +65,34 @@ End users interact via SharePoint only — no terminal access required.
 ## 7. Deploy
 - [x] Dockerfile
 - [x] Docker Compose config
-- [ ] Deploy to company server (Power Automate gateway already connected)
+- [x] Deploy to Hetzner server
+- [x] DuckDNS domain: `ausstellerliste.duckdns.org`
+- [x] nginx reverse proxy (port 8003 → scraper container)
+- [x] SSL via certbot + Let's Encrypt (auto-renew)
 - [ ] CI/CD pipeline (skipped for now — not needed with single developer)
+- [ ] Rotate API key (current key was exposed in chat)
+
+## 8. Copilot Studio + Power Automate Integration
+
+Copilot Studio agent triggers a flow that calls the scraper API, saves result to SharePoint, and returns the URL to the user.
+
+### Architecture:
+```
+User → Copilot Studio Agent → Flow → API (https://ausstellerliste.duckdns.org) → SharePoint → URL back to user
+```
+
+### Flow Steps (Copilot Studio Agent Flow):
+- [x] Trigger: "Wenn ein Agent den Flow aufruft" — Input: `url` (Text)
+- [x] HTTP POST `/scrape` — start scrape job (Header: X-API-Key, Body: url/format/limit)
+- [x] JSON analysieren — extract `job_id` and `status`
+- [ ] Wiederholen bis (Do Until) — poll until `status == completed` or `failed`
+  - [ ] Verzögern (Delay) — 10 Sekunden
+  - [ ] HTTP GET `/scrape/{job_id}/status` — check status
+  - [ ] JSON analysieren — extract updated status, total_exhibitors, file_name
+- [ ] Bedingung (Condition) — status == completed?
+  - [ ] Wenn ja: HTTP GET `/scrape/{job_id}/download` — download file
+  - [ ] Wenn ja: SharePoint "Datei erstellen" — save to `/Freigegebene Dokumente/Aussteller`
+  - [ ] Wenn ja: Respond to agent — return SharePoint URL + total_exhibitors
+  - [ ] Wenn nein: Respond to agent — return error message
+- [ ] Configure Copilot Studio agent topic (trigger phrases, URL input, response message)
+- [ ] End-to-end test
