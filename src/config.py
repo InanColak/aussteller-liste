@@ -28,6 +28,7 @@ DEFAULT_FORMAT: str = "excel"
 # Concurrency & cost limits
 MAX_CONCURRENT_JOBS: int = int(os.getenv("MAX_CONCURRENT_JOBS", "3"))
 DAILY_SCRAPE_LIMIT: int = int(os.getenv("DAILY_SCRAPE_LIMIT", "50"))
+SCRAPE_TIMEOUT: int = int(os.getenv("SCRAPE_TIMEOUT", "600"))
 
 # API Authentication
 API_KEY: str = os.getenv("API_KEY", "")

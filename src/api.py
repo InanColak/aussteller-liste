@@ -18,6 +18,7 @@ from src.config import (
     LOG_DIR,
     MAX_CONCURRENT_JOBS,
     DAILY_SCRAPE_LIMIT,
+    SCRAPE_TIMEOUT,
     API_KEY,
     ALLOWED_ORIGINS,
     DATABASE_URL,
@@ -42,7 +43,6 @@ logger = logging.getLogger("aussteller-api")
 
 # --- App ---
 
-SCRAPE_TIMEOUT = 600  # 10 minutes max per scrape
 _start_time = time.time()
 
 app = FastAPI(
