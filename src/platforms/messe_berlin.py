@@ -5,10 +5,11 @@ import re
 from urllib.parse import urlparse
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
-from src.config import MAX_RETRIES, REQUEST_DELAY
+from src.config import REQUEST_DELAY
 from src.models import Exhibitor, ScrapeResult
+from src.platforms._retry import RETRY_ATTEMPTS, smart_retry_wait
 from src.platforms.base import BaseScraper
 
 # Known Messe Berlin / Corussoft Navigator sites
@@ -105,8 +106,8 @@ class MesseBerlinScraper(BaseScraper):
         return data.get("beConnectionToken", DEFAULT_BE_TOKEN)
 
     @retry(
-        stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(RETRY_ATTEMPTS),
+        wait=smart_retry_wait,
     )
     async def _fetch_exhibitor_page(
         self, client: httpx.AsyncClient, config: dict, start: int, count: int
@@ -132,8 +133,8 @@ class MesseBerlinScraper(BaseScraper):
         return resp.json()
 
     @retry(
-        stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(RETRY_ATTEMPTS),
+        wait=smart_retry_wait,
     )
     async def _fetch_company_detail(
         self, client: httpx.AsyncClient, config: dict, org_id: str

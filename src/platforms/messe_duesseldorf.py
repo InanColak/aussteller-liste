@@ -6,10 +6,11 @@ import re
 from urllib.parse import urlparse
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt
 
-from src.config import MAX_RETRIES, REQUEST_DELAY
+from src.config import REQUEST_DELAY
 from src.models import Exhibitor, ScrapeResult
+from src.platforms._retry import RETRY_ATTEMPTS, smart_retry_wait
 from src.platforms.base import BaseScraper
 
 DOMAIN_PATTERN = re.compile(
@@ -71,8 +72,8 @@ class MesseDuesseldorfScraper(BaseScraper):
         return parts[0] if parts else "unknown"
 
     @retry(
-        stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(RETRY_ATTEMPTS),
+        wait=smart_retry_wait,
     )
     async def _fetch_directory_letter(
         self, client: httpx.AsyncClient, base_url: str, letter: str
@@ -82,8 +83,8 @@ class MesseDuesseldorfScraper(BaseScraper):
         return resp.json()
 
     @retry(
-        stop=stop_after_attempt(MAX_RETRIES),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
+        stop=stop_after_attempt(RETRY_ATTEMPTS),
+        wait=smart_retry_wait,
     )
     async def _fetch_exhibitor_detail(
         self, client: httpx.AsyncClient, api_host: str, exh_id: str
