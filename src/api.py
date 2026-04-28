@@ -343,6 +343,12 @@ async def get_status(job_id: str) -> JobInfo:
     return jobs[job_id]
 
 
+@app.get("/scrape/jobs/recent", response_model=list[JobInfo], dependencies=[Depends(verify_api_key)])
+async def list_recent_jobs(limit: int = 20) -> list[JobInfo]:
+    ordered = sorted(jobs.values(), key=lambda j: j.created_at, reverse=True)
+    return ordered[: max(1, min(limit, 100))]
+
+
 @app.get("/scrape/{job_id}/download-url", dependencies=[Depends(verify_api_key)])
 async def get_download_url(job_id: str) -> dict:
     if not DOWNLOAD_TOKEN_SECRET or not PUBLIC_BASE_URL:
