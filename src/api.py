@@ -7,7 +7,8 @@ import uuid
 from datetime import datetime, date
 from enum import Enum
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+import jwt
+from fastapi import FastAPI, HTTPException, Depends, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -20,6 +21,9 @@ from src.config import (
     API_KEY,
     ALLOWED_ORIGINS,
     DATABASE_URL,
+    DOWNLOAD_TOKEN_SECRET,
+    DOWNLOAD_TOKEN_TTL,
+    PUBLIC_BASE_URL,
 )
 from src.exporters import export_csv, export_excel
 from src.orchestrator import scrape_url
@@ -339,8 +343,55 @@ async def get_status(job_id: str) -> JobInfo:
     return jobs[job_id]
 
 
-@app.get("/scrape/{job_id}/download", dependencies=[Depends(verify_api_key)])
-async def download_result(job_id: str) -> FileResponse:
+@app.get("/scrape/{job_id}/download-url", dependencies=[Depends(verify_api_key)])
+async def get_download_url(job_id: str) -> dict:
+    if not DOWNLOAD_TOKEN_SECRET or not PUBLIC_BASE_URL:
+        raise HTTPException(status_code=503, detail="download-url feature not configured")
+
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != JobStatus.completed:
+        raise HTTPException(status_code=409, detail=f"Job is {job.status.value}, not completed")
+
+    now = int(time.time())
+    token = jwt.encode(
+        {"sub": job_id, "aud": "download", "iat": now, "exp": now + DOWNLOAD_TOKEN_TTL},
+        DOWNLOAD_TOKEN_SECRET,
+        algorithm="HS256",
+    )
+    return {
+        "url": f"{PUBLIC_BASE_URL}/scrape/{job_id}/download?token={token}",
+        "expires_in_seconds": DOWNLOAD_TOKEN_TTL,
+        "filename": job.file_name,
+    }
+
+
+@app.get("/scrape/{job_id}/download")
+async def download_result(
+    job_id: str,
+    token: str | None = None,
+    x_api_key: str | None = Header(default=None),
+) -> FileResponse:
+    if token:
+        if not DOWNLOAD_TOKEN_SECRET:
+            raise HTTPException(status_code=503, detail="token auth not configured")
+        try:
+            payload = jwt.decode(
+                token,
+                DOWNLOAD_TOKEN_SECRET,
+                algorithms=["HS256"],
+                audience="download",
+            )
+        except jwt.PyJWTError:
+            raise HTTPException(status_code=401, detail="invalid or expired token")
+        if payload.get("sub") != job_id:
+            raise HTTPException(status_code=401, detail="token does not match job")
+    else:
+        if API_KEY and x_api_key != API_KEY:
+            raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
 

@@ -32,6 +32,11 @@ DAILY_SCRAPE_LIMIT: int = int(os.getenv("DAILY_SCRAPE_LIMIT", "50"))
 # API Authentication
 API_KEY: str = os.getenv("API_KEY", "")
 
+# Signed download URLs (short-lived JWT)
+DOWNLOAD_TOKEN_SECRET: str = os.getenv("DOWNLOAD_TOKEN_SECRET", "")
+DOWNLOAD_TOKEN_TTL: int = int(os.getenv("DOWNLOAD_TOKEN_TTL", "300"))
+PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+
 # Database
 DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
