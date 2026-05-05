@@ -144,9 +144,13 @@ async def _run_scrape_job(job_id: str) -> None:
         job.progress = "Scraping started"
         logger.info("Job %s started — URL: %s (limit: %d)", job_id, job.url, job.limit)
 
+        async def update_progress(count: int, message: str) -> None:
+            job.total_exhibitors = count
+            job.progress = message
+
         try:
             result = await asyncio.wait_for(
-                scrape_url(job.url, limit=job.limit),
+                scrape_url(job.url, limit=job.limit, progress_callback=update_progress),
                 timeout=SCRAPE_TIMEOUT,
             )
 

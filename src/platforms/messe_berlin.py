@@ -10,7 +10,7 @@ from tenacity import retry, stop_after_attempt
 from src.config import REQUEST_DELAY
 from src.models import Exhibitor, ScrapeResult
 from src.platforms._retry import RETRY_ATTEMPTS, smart_retry_wait
-from src.platforms.base import BaseScraper
+from src.platforms.base import BaseScraper, ProgressCallback
 
 # Known Messe Berlin / Corussoft Navigator sites
 DOMAIN_PATTERN = re.compile(
@@ -239,7 +239,7 @@ class MesseBerlinScraper(BaseScraper):
             description=entity.get("teaser"),
         )
 
-    async def scrape(self, url: str, limit: int = 0) -> ScrapeResult:
+    async def scrape(self, url: str, limit: int = 0, progress_callback: ProgressCallback = None) -> ScrapeResult:
         import typer
 
         config = await self._get_config(url)
@@ -275,7 +275,9 @@ class MesseBerlinScraper(BaseScraper):
             # Fetch all exhibitor IDs from listing
             PAGE_SIZE = 100
             all_ids: list[tuple[str, dict]] = []  # (id, listing_data)
+            page_index = 0
             for start in range(0, target, PAGE_SIZE):
+                page_index += 1
                 count = min(PAGE_SIZE, target - start)
                 typer.echo(f"  Fetching list {start + 1}-{start + count} of {target}...")
                 page_data = await self._fetch_exhibitor_page(client, config, start, count)
@@ -283,6 +285,10 @@ class MesseBerlinScraper(BaseScraper):
                     all_ids.append((entity["id"], entity))
                     if limit and len(all_ids) >= limit:
                         break
+
+                if progress_callback:
+                    await progress_callback(len(all_ids), f"Listing page {page_index} — {len(all_ids)}/{target} exhibitors found")
+
                 if limit and len(all_ids) >= limit:
                     break
                 await asyncio.sleep(REQUEST_DELAY)
@@ -309,6 +315,9 @@ class MesseBerlinScraper(BaseScraper):
                     typer.echo(f"  Warning: Could not fetch detail for {org_id}: {e}")
                     # Fall back to listing data
                     exhibitors.append(self._parse_exhibitor_from_listing(listing))
+
+                if i % 25 == 0 and progress_callback:
+                    await progress_callback(len(exhibitors), f"Detail {i}/{len(all_ids)} — {len(exhibitors)} exhibitors")
 
                 await asyncio.sleep(REQUEST_DELAY)
 

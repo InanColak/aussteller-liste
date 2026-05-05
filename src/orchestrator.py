@@ -11,27 +11,27 @@ from src.learning.analyzer import analyze_site
 from src.learning.replay import replay_scrape
 from src.learning.store import find_profile, save_profile, update_last_used
 from src.models import Exhibitor, ScrapeResult
-from src.platforms.base import BaseScraper
+from src.platforms.base import BaseScraper, ProgressCallback
 from src.platforms.registry import detect_platform
 
 logger = logging.getLogger("aussteller-orchestrator")
 
 
-async def scrape_url(url: str, limit: int = 0) -> ScrapeResult:
+async def scrape_url(url: str, limit: int = 0, progress_callback: ProgressCallback = None) -> ScrapeResult:
     """Main entry point: detect platform and scrape exhibitors."""
 
     # 1. Try known platform scrapers (hand-coded)
     scraper = detect_platform(url)
     if scraper:
         logger.info("Detected platform: %s", scraper.name)
-        return await scraper.scrape(url, limit=limit)
+        return await scraper.scrape(url, limit=limit, progress_callback=progress_callback)
 
     # 2. Try learned site profiles
     profile = find_profile(url)
     if profile and profile.confidence >= 0.5:
         logger.info("Using learned profile: %s (confidence: %.0f%%)", profile.platform_id, profile.confidence * 100)
         try:
-            result = await replay_scrape(profile, url, limit=limit)
+            result = await replay_scrape(profile, url, limit=limit, progress_callback=progress_callback)
             if result.total_exhibitors > 0:
                 update_last_used(profile)
                 return result
@@ -47,7 +47,7 @@ async def scrape_url(url: str, limit: int = 0) -> ScrapeResult:
         logger.info("Detected platform from site structure: %s", detected_scraper.name)
         # Use the detected URL if available (e.g., Ungerboeck portal URL found in links)
         scrape_target = getattr(detected_scraper, "_detected_url", url)
-        return await detected_scraper.scrape(scrape_target, limit=limit)
+        return await detected_scraper.scrape(scrape_target, limit=limit, progress_callback=progress_callback)
 
     # 4. Fall back to AI-powered discovery
     logger.info("Unknown platform — using AI-powered discovery...")
@@ -56,7 +56,7 @@ async def scrape_url(url: str, limit: int = 0) -> ScrapeResult:
         logger.info("Could not find exhibitor list link. Trying to extract from current page...")
         exhibitor_urls = [url]
 
-    result = await _discovery_scrape_from_urls(url, exhibitor_urls, limit=limit)
+    result = await _discovery_scrape_from_urls(url, exhibitor_urls, limit=limit, progress_callback=progress_callback)
 
     # 5. Try to learn the site for next time (only if successful)
     if result.total_exhibitors > 0:
@@ -103,18 +103,20 @@ def _detect_platform_from_links(url: str, links: list[dict[str, str]]) -> BaseSc
 
 
 async def _discovery_scrape_from_urls(
-    url: str, exhibitor_urls: list[str], limit: int = 0
+    url: str, exhibitor_urls: list[str], limit: int = 0, progress_callback: ProgressCallback = None
 ) -> ScrapeResult:
     """AI-powered scraping from pre-identified exhibitor URLs."""
     fair_name = urlparse(url).hostname or "unknown"
 
     all_exhibitors: list[Exhibitor] = []
+    page_num = 0
     for ex_url in exhibitor_urls:
         logger.info("Extracting exhibitors from: %s", ex_url)
         page_url = ex_url
         max_pages = 20
 
         for _ in range(max_pages):
+            page_num += 1
             try:
                 exhibitors, next_url = await extract_exhibitors("", page_url)
             except Exception as e:
@@ -122,6 +124,9 @@ async def _discovery_scrape_from_urls(
                 break
             all_exhibitors.extend(exhibitors)
             logger.info("  Found %d exhibitors (total: %d)", len(exhibitors), len(all_exhibitors))
+
+            if progress_callback:
+                await progress_callback(len(all_exhibitors), f"Page {page_num} scanned — {len(all_exhibitors)} exhibitors")
 
             if limit and len(all_exhibitors) >= limit:
                 break

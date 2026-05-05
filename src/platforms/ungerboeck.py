@@ -9,7 +9,7 @@ from playwright.async_api import Page, async_playwright
 
 from src.config import REQUEST_DELAY
 from src.models import Exhibitor, ScrapeResult
-from src.platforms.base import BaseScraper
+from src.platforms.base import BaseScraper, ProgressCallback
 
 # Matches *.ungerboeck.com and *.ungerboeck.net URLs
 DOMAIN_PATTERN = re.compile(r"ungerboeck\.(com|net)", re.IGNORECASE)
@@ -188,7 +188,7 @@ class UngerboeckScraper(BaseScraper):
 
         return None
 
-    async def scrape(self, url: str, limit: int = 0) -> ScrapeResult:
+    async def scrape(self, url: str, limit: int = 0, progress_callback: ProgressCallback = None) -> ScrapeResult:
         """Scrape exhibitors by loading the Ungerboeck SPA and intercepting API data.
 
         1. Load portal page → intercept GetInitialData (exhibitor listing)
@@ -262,6 +262,9 @@ class UngerboeckScraper(BaseScraper):
                 exhibitors.append(
                     self._parse_exhibitor(item, detail, product_map)
                 )
+
+                if (i + 1) % 25 == 0 and progress_callback:
+                    await progress_callback(len(exhibitors), f"Detail {i + 1}/{len(exhibitor_list)} — {len(exhibitors)} exhibitors")
 
                 await asyncio.sleep(REQUEST_DELAY)
 

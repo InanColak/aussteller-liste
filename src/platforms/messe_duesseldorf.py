@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt
 from src.config import REQUEST_DELAY
 from src.models import Exhibitor, ScrapeResult
 from src.platforms._retry import RETRY_ATTEMPTS, smart_retry_wait
-from src.platforms.base import BaseScraper
+from src.platforms.base import BaseScraper, ProgressCallback
 
 DOMAIN_PATTERN = re.compile(
     r"(messe-duesseldorf\.com|"
@@ -151,7 +151,7 @@ class MesseDuesseldorfScraper(BaseScraper):
             address=address,
         )
 
-    async def scrape(self, url: str, limit: int = 0) -> ScrapeResult:
+    async def scrape(self, url: str, limit: int = 0, progress_callback: ProgressCallback = None) -> ScrapeResult:
         import typer
 
         fair_slug = self._extract_fair_slug(url)
@@ -188,6 +188,9 @@ class MesseDuesseldorfScraper(BaseScraper):
                     if limit and len(exh_ids) >= limit:
                         break
 
+                if progress_callback:
+                    await progress_callback(len(exh_ids), f"Directory '{letter}' scanned — {len(exh_ids)} exhibitor IDs found")
+
                 if limit and len(exh_ids) >= limit:
                     break
 
@@ -209,6 +212,9 @@ class MesseDuesseldorfScraper(BaseScraper):
                     exhibitors.append(self._parse_exhibitor_from_detail(detail))
                 except Exception as e:
                     typer.echo(f"  Warning: Could not fetch detail for {exh_id}: {e}")
+
+                if i % 25 == 0 and progress_callback:
+                    await progress_callback(len(exhibitors), f"Detail {i}/{len(exh_ids)} — {len(exhibitors)} exhibitors")
 
                 await asyncio.sleep(REQUEST_DELAY)
 

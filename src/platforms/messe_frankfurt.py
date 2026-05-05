@@ -11,7 +11,7 @@ from tenacity import retry, stop_after_attempt
 from src.config import REQUEST_DELAY
 from src.models import Exhibitor, ScrapeResult
 from src.platforms._retry import RETRY_ATTEMPTS, smart_retry_wait
-from src.platforms.base import BaseScraper
+from src.platforms.base import BaseScraper, ProgressCallback
 
 DOMAIN_PATTERN = re.compile(
     r"messefrankfurt\.com",
@@ -49,7 +49,7 @@ class MesseFrankfurtScraper(BaseScraper):
     def detect(cls, url: str) -> bool:
         return bool(DOMAIN_PATTERN.search(url))
 
-    async def scrape(self, url: str, limit: int = 0) -> ScrapeResult:
+    async def scrape(self, url: str, limit: int = 0, progress_callback: ProgressCallback = None) -> ScrapeResult:
         event_variable = self._resolve_event(url)
         apikey = await self._fetch_apikey(url)
 
@@ -72,6 +72,9 @@ class MesseFrankfurtScraper(BaseScraper):
 
                 meta = result.get("metaData", {})
                 total = meta.get("hitsTotal", 0)
+
+                if progress_callback:
+                    await progress_callback(len(exhibitors), f"Page {page_number} processed — {len(exhibitors)}/{total} exhibitors")
 
                 if limit and len(exhibitors) >= limit:
                     exhibitors = exhibitors[:limit]

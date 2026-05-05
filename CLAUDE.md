@@ -51,7 +51,7 @@ The orchestrator (`scrape_url`) tries 5 strategies in order:
 
 ### Built-in Platform Scrapers (src/platforms/)
 
-Each scraper extends `BaseScraper` (ABC with `detect()` and `scrape()` methods) and is registered in `registry.py`'s `SCRAPERS` list.
+Each scraper extends `BaseScraper` (ABC with `detect()` and `scrape()` methods) and is registered in `registry.py`'s `SCRAPERS` list. The `scrape()` method accepts an optional `progress_callback: Callable[[int, str], Awaitable[None]] | None` parameter — when provided, scrapers call it at meaningful intervals (after each page/letter/detail batch) with the current exhibitor count and a human-readable progress message, enabling live status updates via the API.
 
 - **MesseDuesseldorfScraper** — VIS API (`/vis-api/vis/v1/`): fetches alphabetical directory, then detail per exhibitor. Covers euroshop, medica, boot, drupa, interpack.
 - **MesseBerlinScraper** — Corussoft Navigator API (`messebackend.aws.corussoft.de`): registers device, searches via POST, fetches company details. Covers ITB, Grüne Woche, InnoTrans. New fairs need entries in `NAVIGATOR_MAP`.
@@ -99,3 +99,4 @@ Optional PostgreSQL storage for scraped companies. Enabled when `DATABASE_URL` i
 - Retry logic via `tenacity` on API calls.
 - Rate limiting via `REQUEST_DELAY` between requests.
 - German-language UI elements are common (cookie banners, pagination text like "nächste", "weiter").
+- **Progress reporting** — `ProgressCallback` (defined in `src/platforms/base.py`) is `Callable[[int, str], Awaitable[None]] | None`. The API's `_run_scrape_job` passes a closure that updates `JobInfo.total_exhibitors` and `JobInfo.progress` in real time. Each scraper and the orchestrator forward it. The MCP server polls `GET /scrape/{job_id}/status` every 5s and surfaces these messages as progress notifications.

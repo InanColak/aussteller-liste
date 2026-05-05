@@ -12,6 +12,7 @@ from playwright.async_api import async_playwright
 from src.config import REQUEST_DELAY
 from src.learning.models import AuthConfig, DetailConfig, ExtractionRule, ListingConfig, SiteProfile
 from src.models import Exhibitor, ScrapeResult
+from src.platforms.base import ProgressCallback
 
 logger = logging.getLogger("aussteller-api")
 
@@ -184,7 +185,7 @@ async def _fetch_meta_letters(
 
 
 async def replay_api_scrape(
-    profile: SiteProfile, url: str, limit: int = 0
+    profile: SiteProfile, url: str, limit: int = 0, progress_callback: ProgressCallback = None
 ) -> ScrapeResult:
     """Replay a scrape using a learned API profile."""
     import typer
@@ -243,6 +244,9 @@ async def replay_api_scrape(
                     if limit and len(listing_items) >= limit:
                         break
 
+                if progress_callback:
+                    await progress_callback(len(listing_items), f"Directory '{letter}' scanned — {len(listing_items)} exhibitor IDs found")
+
                 if limit and len(listing_items) >= limit:
                     break
                 await asyncio.sleep(REQUEST_DELAY)
@@ -295,6 +299,14 @@ async def replay_api_scrape(
                     listing_items.append(item)
 
                 typer.echo(f"  Page {page_num}: {len(items)} items (total: {len(listing_items)})")
+
+                if progress_callback:
+                    total_hint = ""
+                    if pagination and pagination.total_path:
+                        t = _extract_json_path(response_data, pagination.total_path)
+                        if t and isinstance(t, (int, float, str)):
+                            total_hint = f"/{int(t)}"
+                    await progress_callback(len(listing_items), f"Page {page_num} processed — {len(listing_items)}{total_hint} exhibitors")
 
                 if limit and len(listing_items) >= limit:
                     break
@@ -356,6 +368,9 @@ async def replay_api_scrape(
                 except Exception as e:
                     typer.echo(f"  Warning: {exh_id}: {e}")
 
+                if i % 25 == 0 and progress_callback:
+                    await progress_callback(len(exhibitors), f"Detail {i}/{len(listing_items)} — {len(exhibitors)} exhibitors")
+
                 await asyncio.sleep(REQUEST_DELAY)
         else:
             for item in listing_items:
@@ -374,7 +389,7 @@ async def replay_api_scrape(
 
 
 async def replay_html_scrape(
-    profile: SiteProfile, url: str, limit: int = 0
+    profile: SiteProfile, url: str, limit: int = 0, progress_callback: ProgressCallback = None
 ) -> ScrapeResult:
     """Replay a scrape using a learned HTML profile (Playwright-based)."""
     import typer
@@ -384,10 +399,10 @@ async def replay_html_scrape(
 
 
 async def replay_scrape(
-    profile: SiteProfile, url: str, limit: int = 0
+    profile: SiteProfile, url: str, limit: int = 0, progress_callback: ProgressCallback = None
 ) -> ScrapeResult:
     """Replay a scrape using a learned profile."""
     if profile.source_type == "api":
-        return await replay_api_scrape(profile, url, limit=limit)
+        return await replay_api_scrape(profile, url, limit=limit, progress_callback=progress_callback)
     else:
-        return await replay_html_scrape(profile, url, limit=limit)
+        return await replay_html_scrape(profile, url, limit=limit, progress_callback=progress_callback)
